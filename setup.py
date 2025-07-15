@@ -35,6 +35,7 @@ setuptools.setup(
         "matplotlib",
         "IPython",
         "PyMuPDF",
+        "PyPDF2",
         "numba",
         "scipy",
         "requests",

@@ -11,7 +11,7 @@ import cv2
 import argparse
 import numpy as np
 from multiprocessing import Pool
-import fitz  # PyMuPDF
+import pymupdf # PyMuPDF
 from typing import List, Tuple, Union
 from PIL import Image
 from functools import lru_cache
@@ -57,7 +57,7 @@ def segment_chemical_structures_from_file(
     """
     if file_path[-3:].lower() == "pdf":
         # Convert PDF to images using PyMuPDF with optimized settings
-        pdf_document = fitz.open(file_path)
+        pdf_document = pymupdf.open(file_path)
         images = []
 
         # Pre-allocate list for known size
@@ -67,7 +67,7 @@ def segment_chemical_structures_from_file(
         def render_page(page_num):
             page = pdf_document[page_num]
             # Render page to image with 300 DPI
-            matrix = fitz.Matrix(300 / 72, 300 / 72)
+            matrix = pymupdf.Matrix(300 / 72, 300 / 72)
             pix = page.get_pixmap(matrix=matrix, alpha=False)  # Skip alpha channel
             # Direct conversion to numpy array
             img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
