@@ -34,7 +34,6 @@ setuptools.setup(
         "opencv-python",
         "matplotlib",
         "IPython",
-        "PyMuPDF",
         "PyPDF2",
         "numba",
         "scipy",

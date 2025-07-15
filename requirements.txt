@@ -13,7 +13,6 @@ matplotlib
 
 # PDF processing
 PyMuPDF
-PyPDF2
 
 # Interactive computing
 IPython
