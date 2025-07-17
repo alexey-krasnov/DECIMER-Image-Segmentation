@@ -11,7 +11,7 @@ import cv2
 import argparse
 import numpy as np
 from multiprocessing import Pool
-import pymupdf # PyMuPDF
+import pymupdf  # PyMuPDF
 from typing import List, Tuple, Union
 from PIL import Image
 from functools import lru_cache
