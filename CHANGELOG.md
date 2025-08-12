@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.5.0](https://github.com/Kohulan/DECIMER-Image-Segmentation/compare/v1.4.0...v1.5.0) (2025-07-17)
+
+
+### Features
+
+* get bbox decimer_segmentation.py ([95802ab](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/95802abaf52c96cd16b1beba0ebe9b5ca8bbfdb0))
+* Segmentation optimization ([e06fc72](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/e06fc7246ce6cc0f7d364f28ab130db43a438743))
+
+
+### Bug Fixes
+
+* added PyPDF2 to requirements.txt and setup.py. Replaces frizt to PyMuPDF in import ([04bde0f](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/04bde0f10187601122a1c1fd1c97d06ad08da043))
+* dependencies ([3fcd42a](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/3fcd42ad2d388404dc802d9710726cd0cb661672))
+* map_fn tensorflow ([5009caa](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/5009caaa3edf1672058ec898a28c34f664114f2d))
+* pymudf and version bump ([037d738](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/037d738e0b0092b42c29e13d2ebb9aa36f2174a0))
+* release please ([ea10e6e](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/ea10e6e89b176c81f1d60d87ae47c6728821ff53))
+* remove unused imports ([e5e7fe3](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/e5e7fe3ca3f2f0a8924be0c7910aea9232f31d55))
+* run on GPU model.py ([1d1f66d](https://github.com/Kohulan/DECIMER-Image-Segmentation/commit/1d1f66d011bf25dfe09f603851163c17c3228608))
+
 ## [1.4.0](https://github.com/Kohulan/DECIMER-Image-Segmentation/compare/v1.3.0...v1.4.0) (2024-02-15)
 
 
