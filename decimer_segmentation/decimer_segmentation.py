@@ -172,10 +172,10 @@ def _download_model_weights(model_path: str) -> None:
                 flush=True,
             )
 
-    logger.info(f"Downloading model weights from Zenodo...")
+    print("Downloading model weights from Zenodo...")
     urllib.request.urlretrieve(MODEL_DOWNLOAD_URL, model_path, reporthook=progress_hook)
     print()
-    logger.info("Download complete!")
+    print("Download complete!")
 
 
 def segment_chemical_structures_from_file(
