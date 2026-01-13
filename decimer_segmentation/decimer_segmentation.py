@@ -29,7 +29,7 @@ from typing import List, Tuple, Union, Optional
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-import requests
+import urllib.request
 import cv2
 import numpy as np
 import pymupdf
@@ -158,29 +158,24 @@ def _warmup_model(model: modellib.MaskRCNN) -> None:
 
 
 def _download_model_weights(model_path: str) -> None:
-    """Download model weights with streaming and progress display."""
-    with requests.get(MODEL_DOWNLOAD_URL, stream=True, timeout=300) as response:
-        response.raise_for_status()
-        total_size = int(response.headers.get("content-length", 0))
-        downloaded_size = 0
+    """Download model weights using urllib."""
 
-        with open(model_path, "wb") as model_file:
-            for chunk in response.iter_content(chunk_size=8192):
-                model_file.write(chunk)
-                downloaded_size += len(chunk)
-
-                if total_size > 0:
-                    percentage = (downloaded_size / total_size) * 100
-                    downloaded_mb = downloaded_size / (1024 * 1024)
-                    total_mb = total_size / (1024 * 1024)
-                    print(
-                        f"\rDownloading model: {percentage:.1f}% ({downloaded_mb:.1f}/{total_mb:.1f} MB)",
-                        end="",
-                        flush=True,
-                    )
-
+    def progress_hook(block_num, block_size, total_size):
+        downloaded = block_num * block_size
         if total_size > 0:
-            print()  # New line after download completes
+            percent = min(100, downloaded * 100 / total_size)
+            downloaded_mb = downloaded / (1024 * 1024)
+            total_mb = total_size / (1024 * 1024)
+            print(
+                f"\rDownloading model: {percent:.1f}% ({downloaded_mb:.1f}/{total_mb:.1f} MB)",
+                end="",
+                flush=True,
+            )
+
+    logger.info(f"Downloading model weights from Zenodo...")
+    urllib.request.urlretrieve(MODEL_DOWNLOAD_URL, model_path, reporthook=progress_hook)
+    print()
+    logger.info("Download complete!")
 
 
 def segment_chemical_structures_from_file(

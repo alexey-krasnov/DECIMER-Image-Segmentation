@@ -1297,14 +1297,17 @@ class MaskRCNN:
 
         results = []
         for i, image in enumerate(images):
-            final_rois, final_class_ids, final_scores, final_masks = (
-                self.unmold_detections(
-                    detections[i],
-                    mrcnn_mask[i],
-                    image.shape,
-                    molded_images[i].shape,
-                    windows[i],
-                )
+            (
+                final_rois,
+                final_class_ids,
+                final_scores,
+                final_masks,
+            ) = self.unmold_detections(
+                detections[i],
+                mrcnn_mask[i],
+                image.shape,
+                molded_images[i].shape,
+                windows[i],
             )
             results.append(
                 {
