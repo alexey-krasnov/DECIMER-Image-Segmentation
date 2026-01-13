@@ -1,326 +1,100 @@
+"""
+DECIMER Segmentation - Mask Expansion Module
+
+Optimized implementation for expanding chemical structure masks to capture
+complete molecular structures from scientific literature images.
+
+This module replaces both complete_structure.py and optimized_complete_structure.py
+with a unified, production-optimized implementation.
+"""
+
+from __future__ import annotations
+
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-import itertools
-from skimage.color import rgb2gray
-from skimage.filters import threshold_otsu
-from skimage.morphology import binary_erosion, binary_dilation
 from typing import List, Tuple
-from scipy.ndimage import label
-from numba import jit, prange
+from concurrent.futures import ThreadPoolExecutor
 import warnings
 
-# Suppress numba warnings for cleaner output
+# Suppress warnings for cleaner output
 warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
 
 
-def plot_it(image_array: np.array) -> None:
+def complete_structure_mask(
+    image_array: np.ndarray,
+    mask_array: np.ndarray,
+    max_depiction_size: Tuple[int, int],
+    debug: bool = False,
+) -> np.ndarray:
     """
-    This function shows the plot of a given image (np.array)
+    Expand masks to capture complete chemical structures.
+
+    This function takes initial detection masks and expands them to include
+    any parts of the chemical structure that may have been missed, while
+    avoiding inclusion of tables, lines, or other non-structure elements.
 
     Args:
-        image_array (np.array): Image
-    """
-    plt.rcParams["figure.figsize"] = (20, 15)
-    _, ax = plt.subplots(1)
-    ax.imshow(image_array)
-    plt.show()
-
-
-def binarize_image(image_array: np.array, threshold="otsu") -> np.array:
-    """
-    This function takes a np.array that represents an RGB image and returns
-    the binarized image (np.array) by applying the otsu threshold.
-
-    Args:
-        image_array (np.array): image
-        threshold (str, optional): "otsu" or a float. Defaults to "otsu".
+        image_array: Input image as numpy array (BGR format)
+        mask_array: Initial masks from MRCNN, shape (height, width, num_masks)
+        max_depiction_size: Tuple of (max_height, max_width) for structure sizing
+        debug: If True, display intermediate results (requires matplotlib)
 
     Returns:
-        np.array: binarized image
+        Expanded masks array of shape (height, width, num_masks)
     """
-    grayscale = rgb2gray(image_array)
-    if threshold == "otsu":
-        threshold = threshold_otsu(grayscale)
-    return grayscale > threshold
-
-
-@jit(nopython=True, cache=True)
-def _get_seeds_fast(
-    mask_indices,
-    image_indices,
-    exclusion_indices,
-    x_min_limit,
-    x_max_limit,
-    y_min_limit,
-    y_max_limit,
-):
-    """
-    Fast numba-compiled function for seed pixel detection.
-    """
-    # Convert to sets for fast intersection
-    mask_set = set()
-    for i in range(len(mask_indices[0])):
-        mask_set.add((mask_indices[0][i], mask_indices[1][i]))
-
-    image_set = set()
-    for i in range(len(image_indices[0])):
-        image_set.add((image_indices[0][i], image_indices[1][i]))
-
-    exclusion_set = set()
-    for i in range(len(exclusion_indices[0])):
-        exclusion_set.add((exclusion_indices[0][i], exclusion_indices[1][i]))
-
-    # Find intersection and filter
-    seed_pixels = []
-    for coord in mask_set:
-        if coord in image_set:
-            y_coord, x_coord = coord
-            if (
-                x_coord >= x_min_limit
-                and x_coord <= x_max_limit
-                and y_coord >= y_min_limit
-                and y_coord <= y_max_limit
-                and coord not in exclusion_set
-            ):
-                seed_pixels.append((x_coord, y_coord))
-
-    return seed_pixels
-
-
-def get_seeds(
-    image_array: np.array,
-    mask_array: np.array,
-    exclusion_mask: np.array,
-) -> List[Tuple[int, int]]:
-    """
-    Optimized version of get_seeds function.
-    """
-    mask_indices = np.where(mask_array)
-    if len(mask_indices[0]) == 0:
-        return []
-
-    # Calculate boundaries once
-    mask_y_diff = mask_indices[0].max() - mask_indices[0].min()
-    mask_x_diff = mask_indices[1].max() - mask_indices[1].min()
-    x_min_limit = mask_indices[1].min() + mask_x_diff / 10
-    x_max_limit = mask_indices[1].max() - mask_x_diff / 10
-    y_min_limit = mask_indices[0].min() + mask_y_diff / 10
-    y_max_limit = mask_indices[0].max() - mask_y_diff / 10
-
-    image_indices = np.where(~image_array)
-    exclusion_indices = np.where(exclusion_mask)
-
-    return _get_seeds_fast(
-        mask_indices,
-        image_indices,
-        exclusion_indices,
-        x_min_limit,
-        x_max_limit,
-        y_min_limit,
-        y_max_limit,
-    )
-
-
-def detect_horizontal_and_vertical_lines(
-    image: np.ndarray, max_depiction_size: Tuple[int, int]
-) -> np.ndarray:
-    """
-    Optimized version with pre-allocated arrays and combined operations.
-    """
-    # Convert to uint8 once
-    binarised_im = (~image).astype(np.uint8) * 255
-    structure_height, structure_width = max_depiction_size
-
-    # Use optimized kernel creation and operations
-    horizontal_kernel = np.ones((1, structure_width), dtype=np.uint8)
-    vertical_kernel = np.ones((structure_height, 1), dtype=np.uint8)
-
-    # Perform morphological operations
-    horizontal_mask = (
-        cv2.morphologyEx(binarised_im, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
-        == 255
-    )
-
-    vertical_mask = (
-        cv2.morphologyEx(binarised_im, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
-        == 255
-    )
-
-    return horizontal_mask | vertical_mask  # Use bitwise OR instead of addition
-
-
-@jit(nopython=True, cache=True)
-def _find_equidistant_points_fast(x1, y1, x2, y2, num_points):
-    """
-    Vectorized version of equidistant points calculation.
-    """
-    points = np.empty((num_points + 1, 2), dtype=np.float64)
-    for i in range(num_points + 1):
-        t = i / num_points
-        points[i, 0] = x1 * (1 - t) + x2 * t
-        points[i, 1] = y1 * (1 - t) + y2 * t
-    return points
-
-
-def find_equidistant_points(
-    x1: int, y1: int, x2: int, y2: int, num_points: int = 5
-) -> np.ndarray:
-    """
-    Optimized version using numba compilation.
-    """
-    return _find_equidistant_points_fast(x1, y1, x2, y2, num_points)
-
-
-def detect_lines(
-    image: np.ndarray,
-    max_depiction_size: Tuple[int, int],
-    segmentation_mask: np.ndarray,
-) -> np.ndarray:
-    """
-    Optimized line detection with vectorized operations.
-    """
-    # Convert to uint8 once
-    image_uint8 = (~image).astype(np.uint8) * 255
-
-    # Detect lines using the Hough Transform
-    lines = cv2.HoughLinesP(
-        image_uint8,
-        1,
-        np.pi / 180,
-        threshold=5,
-        minLineLength=int(max(max_depiction_size) / 4),
-        maxLineGap=10,
-    )
-
-    if lines is None:
-        return np.zeros_like(image_uint8, dtype=np.uint8)
-
-    # Pre-allocate exclusion mask
-    exclusion_mask = np.zeros_like(image_uint8, dtype=np.uint8)
-
-    # Vectorized line processing
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        points = find_equidistant_points(x1, y1, x2, y2, num_points=7)
-
-        # Check if points are in structure (vectorized)
-        valid_points = points[1:-1]  # Exclude endpoints
-        coords = np.clip(
-            valid_points.astype(int),
-            0,
-            [segmentation_mask.shape[1] - 1, segmentation_mask.shape[0] - 1],
-        )
-
-        if not segmentation_mask[coords[:, 1], coords[:, 0]].any():
-            cv2.line(exclusion_mask, (x1, y1), (x2, y2), 255, 2)
-
-    return exclusion_mask
-
-
-def expand_masks(
-    image_array: np.array,
-    seed_pixels: List[Tuple[int, int]],
-    mask_array: np.array,
-) -> np.array:
-    """
-    Optimized mask expansion with reduced memory allocations.
-    """
-    if not seed_pixels:
-        return np.zeros_like(image_array, dtype=bool)
-
-    inverted_image = ~image_array
-    labeled_array, _ = label(inverted_image)
-    result_mask = np.zeros_like(image_array, dtype=bool)
-
-    # Process all seed pixels in vectorized manner where possible
-    processed_labels = set()
-    for x, y in seed_pixels:
-        if result_mask[y, x]:
-            continue
-        label_value = labeled_array[y, x]
-        if label_value > 0 and label_value not in processed_labels:
-            result_mask[labeled_array == label_value] = True
-            processed_labels.add(label_value)
-
-    return result_mask
-
-
-def expansion_coordination(
-    mask_array: np.array, image_array: np.array, exclusion_mask: np.array
-) -> np.array:
-    """
-    Optimized coordination function.
-    """
-    seed_pixels = get_seeds(image_array, mask_array, exclusion_mask)
-    return expand_masks(image_array, seed_pixels, mask_array)
-
-
-def complete_structure_mask(
-    image_array: np.array,
-    mask_array: np.array,
-    max_depiction_size: Tuple[int, int],
-    debug=False,
-) -> np.array:
-    """
-    Heavily optimized version of complete_structure_mask.
-    """
-    if mask_array.size == 0:
-        print("No masks found.")
+    if mask_array.size == 0 or mask_array.shape[2] == 0:
         return mask_array
 
-    # Optimize binarization
-    binarized_image_array = binarize_image(image_array, threshold=0.72)
-    if debug:
-        plot_it(binarized_image_array)
+    # Step 1: Binarize the image
+    binarized = _binarize_image_fast(image_array, threshold=0.72)
 
-    # Calculate blur factor and kernel once
-    blur_factor = max(2, int(image_array.shape[1] / 185))
+    if debug:
+        _debug_plot(binarized, "Binarized Image")
+
+    # Step 2: Apply erosion to clean up the image
+    blur_factor = max(2, image_array.shape[1] // 185)
     kernel = np.ones((blur_factor, blur_factor), dtype=np.uint8)
 
-    # Apply erosion
-    blurred_image_array = binary_erosion(binarized_image_array, footprint=kernel)
-    if debug:
-        plot_it(blurred_image_array)
-
-    # Optimized mask splitting - use moveaxis instead of list comprehension
-    split_mask_arrays = np.moveaxis(mask_array, 2, 0)
-
-    # Detect lines with optimized functions
-    horizontal_vertical_lines = detect_horizontal_and_vertical_lines(
-        blurred_image_array, max_depiction_size
-    )
-
-    # Create segmentation mask more efficiently
-    segmentation_mask = mask_array.any(axis=2)
-
-    hough_lines = detect_lines(
-        binarized_image_array,
-        max_depiction_size,
-        segmentation_mask=segmentation_mask,
-    )
-
-    # Combine masks efficiently
-    hough_lines_dilated = binary_dilation(hough_lines, footprint=kernel)
-    exclusion_mask = horizontal_vertical_lines | hough_lines_dilated
-
-    # Optimize image processing
-    image_with_exclusion = ~((~blurred_image_array) & (~exclusion_mask))
+    # Use OpenCV for faster morphological operations
+    eroded = cv2.erode(binarized.astype(np.uint8) * 255, kernel, iterations=1) > 127
 
     if debug:
-        plot_it(horizontal_vertical_lines)
-        plot_it(hough_lines_dilated)
-        plot_it(exclusion_mask)
-        plot_it(image_with_exclusion)
+        _debug_plot(eroded, "Eroded Image")
 
-    # Optimized expansion using list comprehension instead of map
-    expanded_masks = [
-        expansion_coordination(mask, image_with_exclusion, exclusion_mask)
-        for mask in split_mask_arrays
-    ]
+    # Step 3: Detect exclusion regions (lines, tables, etc.)
+    exclusion_mask = _create_exclusion_mask(
+        binarized=binarized,
+        eroded=eroded,
+        mask_array=mask_array,
+        max_depiction_size=max_depiction_size,
+        kernel=kernel,
+        debug=debug,
+    )
 
-    # Optimized duplicate filtering
-    unique_masks = filter_duplicate_masks_fast(expanded_masks)
+    # Step 4: Create the working image with exclusions applied
+    working_image = eroded.copy()
+    working_image[exclusion_mask] = True  # Set exclusion regions to white (background)
+
+    if debug:
+        _debug_plot(working_image, "Working Image with Exclusions")
+
+    # Step 5: Expand each mask
+    num_masks = mask_array.shape[2]
+
+    if num_masks <= 3:
+        # Sequential processing for small numbers
+        expanded_masks = [
+            _expand_single_mask(mask_array[:, :, i], working_image, exclusion_mask)
+            for i in range(num_masks)
+        ]
+    else:
+        # Parallel processing for larger numbers
+        expanded_masks = _expand_masks_parallel(
+            mask_array, working_image, exclusion_mask
+        )
+
+    # Step 6: Filter duplicates efficiently
+    unique_masks = _filter_duplicate_masks(expanded_masks)
 
     if not unique_masks:
         return np.empty((image_array.shape[0], image_array.shape[1], 0), dtype=bool)
@@ -328,50 +102,427 @@ def complete_structure_mask(
     return np.stack(unique_masks, axis=-1)
 
 
-def filter_duplicate_masks_fast(array_list: List[np.array]) -> List[np.array]:
+def _binarize_image_fast(image: np.ndarray, threshold: float = 0.72) -> np.ndarray:
     """
-    Highly optimized duplicate filtering using hash-based comparison.
+    Fast image binarization using OpenCV.
+
+    Args:
+        image: Input BGR image
+        threshold: Binarization threshold (0-1)
+
+    Returns:
+        Binary image (True = white/background, False = dark/foreground)
     """
-    if not array_list:
+    # Convert to grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+
+    # Normalize to 0-1 range
+    normalized = gray.astype(np.float32) / 255.0
+
+    return normalized > threshold
+
+
+def _create_exclusion_mask(
+    binarized: np.ndarray,
+    eroded: np.ndarray,
+    mask_array: np.ndarray,
+    max_depiction_size: Tuple[int, int],
+    kernel: np.ndarray,
+    debug: bool = False,
+) -> np.ndarray:
+    """
+    Create a mask of regions to exclude from expansion (lines, tables, etc.).
+
+    Args:
+        binarized: Binarized image
+        eroded: Eroded image
+        mask_array: Original detection masks
+        max_depiction_size: Max structure size for line detection thresholds
+        kernel: Morphological kernel
+        debug: Whether to display debug plots
+
+    Returns:
+        Boolean mask where True indicates exclusion regions
+    """
+    # Detect horizontal and vertical lines
+    hv_lines = _detect_horizontal_vertical_lines(eroded, max_depiction_size)
+
+    if debug:
+        _debug_plot(hv_lines, "Horizontal/Vertical Lines")
+
+    # Detect arbitrary lines using Hough transform
+    segmentation_mask = np.any(mask_array, axis=2)
+    hough_lines = _detect_hough_lines(binarized, max_depiction_size, segmentation_mask)
+
+    # Dilate Hough lines to create buffer zone
+    if hough_lines.any():
+        hough_lines = (
+            cv2.dilate(hough_lines.astype(np.uint8) * 255, kernel, iterations=1) > 127
+        )
+
+    if debug:
+        _debug_plot(hough_lines, "Hough Lines (dilated)")
+
+    # Combine exclusion masks
+    exclusion_mask = hv_lines | hough_lines
+
+    if debug:
+        _debug_plot(exclusion_mask, "Combined Exclusion Mask")
+
+    return exclusion_mask
+
+
+def _detect_horizontal_vertical_lines(
+    image: np.ndarray, max_depiction_size: Tuple[int, int]
+) -> np.ndarray:
+    """
+    Detect long horizontal and vertical lines (table borders, separators).
+
+    Args:
+        image: Binarized/eroded image (True = white)
+        max_depiction_size: (height, width) for line length thresholds
+
+    Returns:
+        Boolean mask of detected lines
+    """
+    # Convert to uint8 for OpenCV (invert so lines are white)
+    img_uint8 = (~image).astype(np.uint8) * 255
+
+    structure_height, structure_width = max_depiction_size
+
+    # Detect horizontal lines
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (structure_width, 1))
+    horizontal_mask = cv2.morphologyEx(
+        img_uint8, cv2.MORPH_OPEN, horizontal_kernel, iterations=2
+    )
+
+    # Detect vertical lines
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, structure_height))
+    vertical_mask = cv2.morphologyEx(
+        img_uint8, cv2.MORPH_OPEN, vertical_kernel, iterations=2
+    )
+
+    # Combine and return as boolean
+    return (horizontal_mask > 127) | (vertical_mask > 127)
+
+
+def _detect_hough_lines(
+    binarized: np.ndarray,
+    max_depiction_size: Tuple[int, int],
+    segmentation_mask: np.ndarray,
+) -> np.ndarray:
+    """
+    Detect arbitrary lines using probabilistic Hough transform.
+
+    Args:
+        binarized: Binarized image
+        max_depiction_size: For minimum line length threshold
+        segmentation_mask: Mask indicating detected structure regions
+
+    Returns:
+        Boolean mask of detected lines
+    """
+    # Convert to uint8 (invert so lines are white)
+    img_uint8 = (~binarized).astype(np.uint8) * 255
+
+    # Detect lines
+    min_line_length = max(max_depiction_size) // 4
+    lines = cv2.HoughLinesP(
+        img_uint8,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=10,  # Slightly higher threshold to reduce noise
+        minLineLength=min_line_length,
+        maxLineGap=10,
+    )
+
+    if lines is None:
+        return np.zeros_like(binarized, dtype=bool)
+
+    # Create exclusion mask
+    exclusion = np.zeros_like(img_uint8, dtype=np.uint8)
+
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+
+        # Check if line passes through structure regions
+        if _line_intersects_structure(x1, y1, x2, y2, segmentation_mask):
+            continue
+
+        # Draw line on exclusion mask
+        cv2.line(exclusion, (x1, y1), (x2, y2), 255, 2)
+
+    return exclusion > 127
+
+
+def _line_intersects_structure(
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    segmentation_mask: np.ndarray,
+    num_samples: int = 7,
+) -> bool:
+    """
+    Check if a line intersects with structure regions.
+
+    Args:
+        x1, y1: Start point
+        x2, y2: End point
+        segmentation_mask: Mask of structure regions
+        num_samples: Number of points to sample along line
+
+    Returns:
+        True if line intersects structure regions
+    """
+    h, w = segmentation_mask.shape
+
+    # Sample points along the line (excluding endpoints)
+    for i in range(1, num_samples - 1):
+        t = i / (num_samples - 1)
+        x = int(x1 + t * (x2 - x1))
+        y = int(y1 + t * (y2 - y1))
+
+        # Bounds check
+        if 0 <= x < w and 0 <= y < h:
+            if segmentation_mask[y, x]:
+                return True
+
+    return False
+
+
+def _expand_single_mask(
+    mask: np.ndarray, working_image: np.ndarray, exclusion_mask: np.ndarray
+) -> np.ndarray:
+    """
+    Expand a single mask to capture complete structure.
+
+    Args:
+        mask: Binary mask for a single structure
+        working_image: Processed image (True = background)
+        exclusion_mask: Regions to exclude from expansion
+
+    Returns:
+        Expanded binary mask
+    """
+    # Find seed pixels within the mask
+    seeds = _get_seed_pixels(mask, working_image, exclusion_mask)
+
+    if not seeds:
+        return mask
+
+    # Use connected components to expand from seeds
+    return _flood_fill_from_seeds(working_image, seeds)
+
+
+def _get_seed_pixels(
+    mask: np.ndarray, image: np.ndarray, exclusion_mask: np.ndarray
+) -> List[Tuple[int, int]]:
+    """
+    Find seed pixels for flood fill expansion.
+
+    Seeds are pixels that are:
+    - Within the inner 80% of the mask
+    - On dark (foreground) pixels in the image
+    - Not in exclusion regions
+
+    Args:
+        mask: Binary mask
+        image: Working image (True = background)
+        exclusion_mask: Exclusion regions
+
+    Returns:
+        List of (x, y) seed coordinates
+    """
+    # Find mask bounds
+    mask_coords = np.where(mask)
+    if len(mask_coords[0]) == 0:
         return []
 
-    seen_hashes = set()
-    unique_list = []
+    y_min, y_max = mask_coords[0].min(), mask_coords[0].max()
+    x_min, x_max = mask_coords[1].min(), mask_coords[1].max()
 
-    for arr in array_list:
-        # Use hash of array for faster comparison
-        if arr.size > 0:
-            # Use a more efficient hash method
-            arr_hash = hash(arr.tobytes())
-            if arr_hash not in seen_hashes:
-                seen_hashes.add(arr_hash)
-                unique_list.append(arr)
-        elif not seen_hashes:  # Handle empty arrays
-            seen_hashes.add(0)  # Placeholder for empty array
-            unique_list.append(arr)
+    # Calculate inner 80% bounds
+    y_margin = (y_max - y_min) * 0.1
+    x_margin = (x_max - x_min) * 0.1
 
-    return unique_list
+    inner_y_min = int(y_min + y_margin)
+    inner_y_max = int(y_max - y_margin)
+    inner_x_min = int(x_min + x_margin)
+    inner_x_max = int(x_max - x_margin)
+
+    # Find valid seed pixels using vectorized operations
+    # Create a combined mask for valid seed regions
+    valid_region = np.zeros_like(mask, dtype=bool)
+    valid_region[inner_y_min : inner_y_max + 1, inner_x_min : inner_x_max + 1] = True
+
+    # Combine conditions: in mask, in valid region, on dark pixel, not excluded
+    seed_mask = (
+        mask & valid_region & (~image) & (~exclusion_mask)  # Dark pixels (foreground)
+    )
+
+    # Extract coordinates
+    seed_coords = np.where(seed_mask)
+
+    # Convert to list of (x, y) tuples
+    # Limit to reasonable number of seeds for performance
+    max_seeds = 1000
+    step = max(1, len(seed_coords[0]) // max_seeds)
+
+    seeds = [
+        (seed_coords[1][i], seed_coords[0][i])
+        for i in range(0, len(seed_coords[0]), step)
+    ]
+
+    return seeds
 
 
-# Alternative filter method for very large arrays
-def filter_duplicate_masks_memory_efficient(
-    array_list: List[np.array],
-) -> List[np.array]:
+def _flood_fill_from_seeds(
+    image: np.ndarray, seeds: List[Tuple[int, int]]
+) -> np.ndarray:
     """
-    Memory-efficient version for very large arrays.
+    Perform flood fill from seed pixels using connected components.
+
+    Args:
+        image: Working image (True = background)
+        seeds: List of (x, y) seed coordinates
+
+    Returns:
+        Expanded binary mask
     """
-    if not array_list:
+    # Create inverted image for connected components (foreground = 255)
+    foreground = (~image).astype(np.uint8)
+
+    # Find connected components
+    num_labels, labels = cv2.connectedComponents(foreground, connectivity=8)
+
+    # Find labels at seed positions
+    seed_labels = set()
+    for x, y in seeds:
+        if 0 <= y < labels.shape[0] and 0 <= x < labels.shape[1]:
+            label = labels[y, x]
+            if label > 0:  # Ignore background (label 0)
+                seed_labels.add(label)
+
+    # Create expanded mask from seed labels
+    expanded_mask = np.zeros_like(image, dtype=bool)
+    for label in seed_labels:
+        expanded_mask |= labels == label
+
+    return expanded_mask
+
+
+def _expand_masks_parallel(
+    mask_array: np.ndarray, working_image: np.ndarray, exclusion_mask: np.ndarray
+) -> List[np.ndarray]:
+    """
+    Expand multiple masks in parallel.
+
+    Args:
+        mask_array: Array of masks, shape (h, w, num_masks)
+        working_image: Processed image
+        exclusion_mask: Exclusion regions
+
+    Returns:
+        List of expanded masks
+    """
+    num_masks = mask_array.shape[2]
+
+    def expand_mask_wrapper(i: int) -> Tuple[int, np.ndarray]:
+        expanded = _expand_single_mask(
+            mask_array[:, :, i], working_image, exclusion_mask
+        )
+        return i, expanded
+
+    expanded_masks = [None] * num_masks
+
+    with ThreadPoolExecutor(max_workers=min(4, num_masks)) as executor:
+        futures = [executor.submit(expand_mask_wrapper, i) for i in range(num_masks)]
+        for future in futures:
+            i, expanded = future.result()
+            expanded_masks[i] = expanded
+
+    return expanded_masks
+
+
+def _filter_duplicate_masks(masks: List[np.ndarray]) -> List[np.ndarray]:
+    """
+    Remove duplicate masks efficiently.
+
+    Uses a hash-based approach with collision detection for accuracy.
+
+    Args:
+        masks: List of binary masks
+
+    Returns:
+        List of unique masks
+    """
+    if not masks:
         return []
 
-    unique_list = []
+    unique_masks = []
+    seen_hashes = {}
 
-    for i, arr1 in enumerate(array_list):
-        is_duplicate = False
-        for j in range(i):
-            if np.array_equal(arr1, array_list[j]):
-                is_duplicate = True
-                break
-        if not is_duplicate:
-            unique_list.append(arr1)
+    for mask in masks:
+        if mask is None or mask.size == 0:
+            continue
 
-    return unique_list
+        # Compute hash
+        mask_bytes = mask.tobytes()
+        mask_hash = hash(mask_bytes)
+
+        # Check for collision
+        if mask_hash in seen_hashes:
+            # Verify it's actually a duplicate (handle hash collisions)
+            is_duplicate = False
+            for existing_mask in seen_hashes[mask_hash]:
+                if np.array_equal(mask, existing_mask):
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                seen_hashes[mask_hash].append(mask)
+                unique_masks.append(mask)
+        else:
+            seen_hashes[mask_hash] = [mask]
+            unique_masks.append(mask)
+
+    return unique_masks
+
+
+def _debug_plot(image: np.ndarray, title: str = "") -> None:
+    """
+    Display an image for debugging purposes.
+
+    Args:
+        image: Image to display
+        title: Plot title
+    """
+    try:
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(12, 8))
+        plt.imshow(image, cmap="gray")
+        plt.title(title)
+        plt.axis("off")
+        plt.show()
+    except ImportError:
+        pass  # Matplotlib not available
+
+
+# Backward compatibility aliases
+def binarize_image(image_array: np.ndarray, threshold="otsu") -> np.ndarray:
+    """Backward compatible binarize function."""
+    if threshold == "otsu":
+        threshold = 0.72  # Approximate Otsu for typical document images
+    return _binarize_image_fast(image_array, float(threshold))
+
+
+def expand_masks(
+    image_array: np.ndarray, seed_pixels: List[Tuple[int, int]], mask_array: np.ndarray
+) -> np.ndarray:
+    """Backward compatible expand_masks function."""
+    return _flood_fill_from_seeds(~_binarize_image_fast(image_array), seed_pixels)
