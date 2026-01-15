@@ -102,8 +102,6 @@ def get_model() -> modellib.MaskRCNN:
 
         return _model
 
-segmentation_model = get_model()
-
 def _load_model_internal() -> modellib.MaskRCNN:
     """Load model with TensorFlow optimizations."""
     import tensorflow as tf
@@ -178,6 +176,7 @@ def _download_model_weights(model_path: str) -> None:
     print()
     print("Download complete!")
 
+segmentation_model = get_model()
 
 def segment_chemical_structures_from_file(
     file_path: str, expand: bool = True, **kwargs
