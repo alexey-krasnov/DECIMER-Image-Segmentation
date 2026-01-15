@@ -29,10 +29,12 @@ from typing import List, Tuple, Union, Optional
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-import urllib.request
+import argparse
 import cv2
 import numpy as np
 import pymupdf
+import pystow
+import tensorflow as tf
 
 from .optimized_complete_structure import complete_structure_mask
 from .mrcnn import model as modellib
@@ -105,7 +107,6 @@ def get_model() -> modellib.MaskRCNN:
 
 def _load_model_internal() -> modellib.MaskRCNN:
     """Load model with TensorFlow optimizations."""
-    import tensorflow as tf
 
     # PERFORMANCE: Enable graph optimizations
     try:
@@ -125,16 +126,15 @@ def _load_model_internal() -> modellib.MaskRCNN:
     except Exception as e:
         logger.debug(f"Some optimizer options not available: {e}")
 
-    root_dir = os.path.dirname(__file__)
-    model_path = os.path.join(root_dir, MODEL_FILENAME)
-
-    if not os.path.exists(model_path):
+    model_path = pystow.join("DECIMER-Segmentation_model")
+    print(model_path)
+    if not os.path.exists(str(model_path) + "/" + MODEL_FILENAME):
         logger.info("Downloading model weights...")
-        _download_model_weights(model_path)
+        download_trained_weights(MODEL_DOWNLOAD_URL, str(model_path))
         logger.info("Successfully downloaded the segmentation model weights!")
 
     model = modellib.MaskRCNN(mode="inference", model_dir=".", config=_inference_config)
-    model.load_weights(model_path, by_name=True)
+    model.load_weights(os.path.join(model_path, MODEL_FILENAME), by_name=True)
 
     return model
 
@@ -157,25 +157,27 @@ def _warmup_model(model: modellib.MaskRCNN) -> None:
         logger.warning(f"Model warmup encountered issue: {e}")
 
 
-def _download_model_weights(model_path: str) -> None:
-    """Download model weights using urllib."""
+def download_trained_weights(model_url: str, model_path: str, verbose=1):
+    """This function downloads the trained modelto a given location.
+    If the model exists on the given location this function
+    will be skipped.
 
-    def progress_hook(block_num, block_size, total_size):
-        downloaded = block_num * block_size
-        if total_size > 0:
-            percent = min(100, downloaded * 100 / total_size)
-            downloaded_mb = downloaded / (1024 * 1024)
-            total_mb = total_size / (1024 * 1024)
-            print(
-                f"\rDownloading model: {percent:.1f}% ({downloaded_mb:.1f}/{total_mb:.1f} MB)",
-                end="",
-                flush=True,
-            )
+    Args:
+        model_url (str): trained model url for downloading.
+        model_path (str): model default path to download.
 
-    print("Downloading model weights from Zenodo...")
-    urllib.request.urlretrieve(MODEL_DOWNLOAD_URL, model_path, reporthook=progress_hook)
-    print()
-    print("Download complete!")
+    Returns:
+        path (str): downloaded model.
+    """
+    # Download trained models
+    if verbose > 0:
+        print("Downloading trained model to " + str(model_path))
+    model_path = pystow.ensure("DECIMER-Segmentation_model", url=model_url)
+    if verbose > 0:
+        print("... done downloading trained model!")
+
+
+segmentation_model = get_model()
 
 
 def segment_chemical_structures_from_file(
@@ -343,7 +345,7 @@ def get_mrcnn_results(
     Returns:
         Tuple of (masks, bounding_boxes, confidence_scores)
     """
-    model = get_model()
+    model = segmentation_model
     results = model.detect([image], verbose=0)
 
     return (
@@ -576,7 +578,6 @@ def reset_model() -> None:
 
 def main():
     """Command-line interface for DECIMER Segmentation."""
-    import argparse
 
     parser = argparse.ArgumentParser(
         description="Segment chemical structures from scientific literature"
