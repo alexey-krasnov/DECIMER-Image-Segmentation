@@ -16,7 +16,6 @@ Performance Optimizations Applied:
 from __future__ import annotations
 
 import os
-import zipfile
 
 # =============================================================================
 # PERFORMANCE: Set environment variables BEFORE importing TensorFlow
@@ -30,7 +29,7 @@ from typing import List, Tuple, Union, Optional
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
-import urllib.request
+import argparse
 import cv2
 import numpy as np
 import pymupdf
@@ -579,7 +578,6 @@ def reset_model() -> None:
 
 def main():
     """Command-line interface for DECIMER Segmentation."""
-    import argparse
 
     parser = argparse.ArgumentParser(
         description="Segment chemical structures from scientific literature"
