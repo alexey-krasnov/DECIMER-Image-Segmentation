@@ -127,7 +127,7 @@ def _load_model_internal() -> modellib.MaskRCNN:
     except Exception as e:
         logger.debug(f"Some optimizer options not available: {e}")
 
-    root_dir = os.path.dirname(__file__)
+    root_dir = pystow.join("DECIMER-Segmentation")
     model_path = os.path.join(root_dir, "segmentation_model")
 
     if not os.path.exists(model_path):
