@@ -127,12 +127,11 @@ def _load_model_internal() -> modellib.MaskRCNN:
     except Exception as e:
         logger.debug(f"Some optimizer options not available: {e}")
 
-    root_dir = pystow.join("DECIMER-Segmentation")
-    model_path = os.path.join(root_dir, "segmentation_model")
-
-    if not os.path.exists(model_path):
+    model_path = pystow.join("DECIMER-Segmentation_model")
+    print(model_path)
+    if not os.path.exists(str(model_path) + "/" + MODEL_FILENAME):
         logger.info("Downloading model weights...")
-        download_trained_weights(MODEL_DOWNLOAD_URL, model_path)
+        download_trained_weights(MODEL_DOWNLOAD_URL, str(model_path))
         logger.info("Successfully downloaded the segmentation model weights!")
 
     model = modellib.MaskRCNN(mode="inference", model_dir=".", config=_inference_config)
@@ -174,9 +173,8 @@ def download_trained_weights(model_url: str, model_path: str, verbose=1):
     # Download trained models
     if verbose > 0:
         print("Downloading trained model to " + str(model_path))
-    model_path = pystow.ensure(model_path, url=model_url)
+    model_path = pystow.ensure("DECIMER-Segmentation_model", url=model_url)
     if verbose > 0:
-        print(model_path)
         print("... done downloading trained model!")
 
 

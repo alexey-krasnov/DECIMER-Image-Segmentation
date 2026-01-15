@@ -38,7 +38,7 @@ setuptools.setup(
         "numba",
         "scipy",
         "requests",
-        "pystow"
+        "pystow",
     ],
     package_data={"decimer_segmentation": ["mrcnn/*.*"]},
     classifiers=[
