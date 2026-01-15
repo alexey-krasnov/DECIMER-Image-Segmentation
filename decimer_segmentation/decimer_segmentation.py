@@ -102,6 +102,7 @@ def get_model() -> modellib.MaskRCNN:
 
         return _model
 
+segmentation_model = get_model()
 
 def _load_model_internal() -> modellib.MaskRCNN:
     """Load model with TensorFlow optimizations."""
@@ -343,7 +344,7 @@ def get_mrcnn_results(
     Returns:
         Tuple of (masks, bounding_boxes, confidence_scores)
     """
-    model = get_model()
+    model = segmentation_model
     results = model.detect([image], verbose=0)
 
     return (
