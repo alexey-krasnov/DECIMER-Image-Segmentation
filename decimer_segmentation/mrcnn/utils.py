@@ -23,7 +23,7 @@ import cv2
 import scipy.ndimage
 
 # URL for model weights
-COCO_MODEL_URL = "https://storage.googleapis.com/mrcnn-weights/mask_rcnn_molecule.h5"
+COCO_MODEL_URL = "https://zenodo.org/records/18412030/files/mask_rcnn_molecule.h5?download=1"
 
 logger = logging.getLogger(__name__)
 
