@@ -189,7 +189,7 @@ def detect_lines(
     if lines is None:
         return exclusion_mask
     for line in lines:
-        x1, y1, x2, y2 = line[0]
+        x1, y1, x2, y2 = np.asarray(line).reshape(-1)[:4]
         # Check if any of the lines is in a chemical structure depiction
         points = find_equidistant_points(x1, y1, x2, y2, num_points=7)
         points_in_structure = False

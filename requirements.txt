@@ -10,7 +10,7 @@ pystow
 # Image processing libraries
 scikit-image>=0.2.0
 pillow
-opencv-python
+opencv-python-headless>=5.0.0
 matplotlib
 
 # PDF processing

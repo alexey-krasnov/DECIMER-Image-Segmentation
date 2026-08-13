@@ -247,7 +247,7 @@ def _detect_hough_lines(
     exclusion = np.zeros_like(img_uint8, dtype=np.uint8)
 
     for line in lines:
-        x1, y1, x2, y2 = line[0]
+        x1, y1, x2, y2 = np.asarray(line).reshape(-1)[:4]
 
         # Check if line passes through structure regions
         if _line_intersects_structure(x1, y1, x2, y2, segmentation_mask):
