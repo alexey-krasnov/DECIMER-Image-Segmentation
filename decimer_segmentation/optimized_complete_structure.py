@@ -17,7 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 import warnings
 
 # Suppress warnings for cleaner output
-warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+deprecation_warning = getattr(np, "VisibleDeprecationWarning", UserWarning)
+warnings.filterwarnings("ignore", category=deprecation_warning)
 
 
 def complete_structure_mask(

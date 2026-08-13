@@ -23,6 +23,8 @@ import os
 os.environ["TF_CUDNN_USE_AUTOTUNE"] = "1"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+# MUST be set before importing TF or DECIMER to use TensorFlow 2.16+ with legacy deprecated Keras 2 APIs
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 
 import logging
 from typing import List, Tuple, Union, Optional
@@ -129,7 +131,7 @@ def _load_model_internal() -> modellib.MaskRCNN:
     model_path = pystow.join("DECIMER-Segmentation_model")
     print(model_path)
     if not os.path.exists(str(model_path) + "/" + MODEL_FILENAME):
-        logger.info("Downloading model weights...")
+        logger.info("Downloading model weights inside decimer_segmentation.py file...")
         download_trained_weights(MODEL_DOWNLOAD_URL, str(model_path))
         logger.info("Successfully downloaded the segmentation model weights!")
 

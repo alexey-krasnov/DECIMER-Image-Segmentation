@@ -542,13 +542,13 @@ class TestIntegration:
             pass
 
 
-# Benchmark tests (optional, for performance monitoring)
+# data tests (optional, for performance monitoring)
 class TestPerformance:
     """Performance benchmark tests."""
 
-    @pytest.mark.skip(reason="Benchmark test - run manually")
+    @pytest.mark.skip(reason="data test - run manually")
     def test_mask_expansion_performance(self):
-        """Benchmark mask expansion speed."""
+        """data mask expansion speed."""
         import time
         from decimer_segmentation.mask_expansion import complete_structure_mask
 
@@ -568,9 +568,9 @@ class TestPerformance:
         print(f"Mask expansion took {elapsed:.3f}s for 5 masks on 1000x1000 image")
         assert elapsed < 5.0  # Should complete in under 5 seconds
 
-    @pytest.mark.skip(reason="Benchmark test - run manually")
+    @pytest.mark.skip(reason="data test - run manually")
     def test_bbox_extraction_performance(self):
-        """Benchmark bounding box extraction."""
+        """data bounding box extraction."""
         import time
         from decimer_segmentation.mrcnn.utils import extract_bboxes
 

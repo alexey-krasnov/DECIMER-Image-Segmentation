@@ -1,7 +1,8 @@
 # DECIMER Image Segmentation Dependencies
 
 # Core machine learning and deep learning frameworks
-tensorflow>=2.12.0,<=2.15.1
+tensorflow>=2.16.0,<=2.22.0
+tf-keras
 numpy>=1.2.0
 scipy
 pystow
