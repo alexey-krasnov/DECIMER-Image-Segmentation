@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 
 import setuptools
-import platform
 
-if (
-    platform.processor() == "arm" or platform.processor() == "i386"
-) and platform.system() == "Darwin":
-    tensorflow_os = "tensorflow>=2.16.0,<=2.22.0"
-else:
-    tensorflow_os = "tensorflow>=2.16.0,<=2.22.0"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
+
+def read_requirements():
+    """Read the requirements.txt file and return a list of dependencies."""
+    with open("requirements.txt", "r", encoding="utf-8") as fh:
+        return fh.read().splitlines()
 
 setuptools.setup(
     name="decimer_segmentation",
@@ -26,20 +24,7 @@ setuptools.setup(
     url="https://github.com/Kohulan/DECIMER-Image-Segmentation",
     packages=setuptools.find_packages(),
     license="MIT",
-    install_requires=[
-        tensorflow_os,
-        "numpy>=1.2.0",
-        "scikit-image>=0.2.0",
-        "pillow",
-        "opencv-python",
-        "matplotlib",
-        "IPython",
-        "PyMuPDF",
-        "numba",
-        "scipy",
-        "requests",
-        "pystow",
-    ],
+    install_requires=read_requirements(),
     package_data={"decimer_segmentation": ["mrcnn/*.*"]},
     classifiers=[
         "Programming Language :: Python :: 3",
