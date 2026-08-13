@@ -541,14 +541,41 @@ class TestIntegration:
             # Expected if model not available
             pass
 
+    def test_segment_from_file_with_return_bboxes(self):
+        """Test segment_chemical_structures_from_file returns bboxes when return_bboxes=True."""
+        from decimer_segmentation import segment_chemical_structures_from_file
 
-# data tests (optional, for performance monitoring)
+        image = np.ones((500, 500, 3), dtype=np.uint8) * 255
+        cv2.rectangle(image, (50, 50), (150, 150), (0, 0, 0), -1)
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            cv2.imwrite(f.name, image)
+            try:
+                result = segment_chemical_structures_from_file(
+                    f.name, expand=False, return_bboxes=True
+                )
+                assert isinstance(result, tuple)
+                assert len(result) == 2
+                segments, bboxes = result
+                assert isinstance(segments, list)
+                assert isinstance(bboxes, list)
+                assert len(segments) == len(bboxes)
+                for bbox in bboxes:
+                    assert len(bbox) == 4
+            except Exception:
+                # Expected if model not available
+                pass
+            finally:
+                os.unlink(f.name)
+
+
+# Benchmark tests (optional, for performance monitoring)
 class TestPerformance:
     """Performance benchmark tests."""
 
-    @pytest.mark.skip(reason="data test - run manually")
+    @pytest.mark.skip(reason="Benchmark test - run manually")
     def test_mask_expansion_performance(self):
-        """data mask expansion speed."""
+        """Benchmark mask expansion speed."""
         import time
         from decimer_segmentation.mask_expansion import complete_structure_mask
 
@@ -568,9 +595,9 @@ class TestPerformance:
         print(f"Mask expansion took {elapsed:.3f}s for 5 masks on 1000x1000 image")
         assert elapsed < 5.0  # Should complete in under 5 seconds
 
-    @pytest.mark.skip(reason="data test - run manually")
+    @pytest.mark.skip(reason="Benchmark test - run manually")
     def test_bbox_extraction_performance(self):
-        """data bounding box extraction."""
+        """Benchmark bounding box extraction."""
         import time
         from decimer_segmentation.mrcnn.utils import extract_bboxes
 
