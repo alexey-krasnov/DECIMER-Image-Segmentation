@@ -14,7 +14,7 @@ opencv-python-headless>=5.0.0
 matplotlib
 
 # PDF processing
-PyMuPDF
+pypdfium2
 
 # Interactive computing
 IPython

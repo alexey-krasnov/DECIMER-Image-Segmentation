@@ -34,7 +34,7 @@ import threading
 import argparse
 import cv2
 import numpy as np
-import pymupdf
+import pypdfium2 as pdfium
 import pystow
 import tensorflow as tf
 
@@ -234,45 +234,26 @@ def _load_images_from_file(file_path: str) -> List[np.ndarray]:
 
 
 def _load_pdf_pages(pdf_path: str) -> List[np.ndarray]:
-    """Load all pages from a PDF as images using PyMuPDF."""
-    pdf_document = pymupdf.open(pdf_path)
-    page_count = pdf_document.page_count
+    """Load all pages from a PDF as BGR images using pypdfium2 (300 DPI).
 
-    if page_count == 1:
-        # Single page - no threading overhead
-        page = pdf_document[0]
-        matrix = pymupdf.Matrix(300 / 72, 300 / 72)
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
-        img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-            pix.h, pix.w, pix.n
-        )
-        if pix.n == 3:
-            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+    Pages are rendered sequentially: pdfium is not thread-safe, so a thread
+    pool over one document would need a lock around every render anyway.
+    """
+    pdf_document = pdfium.PdfDocument(pdf_path)
+    try:
+        images = []
+        for page_num in range(len(pdf_document)):
+            page = pdf_document[page_num]
+            try:
+                # pdfium's native byte order is already BGR, which is what
+                # the rest of the pipeline (OpenCV) expects.
+                bitmap = page.render(scale=300 / 72)
+                images.append(np.array(bitmap.to_numpy(), dtype=np.uint8))
+            finally:
+                page.close()
+        return images
+    finally:
         pdf_document.close()
-        return [img_array.copy()]
-
-    # Multiple pages - use threading for I/O
-    images = [None] * page_count
-
-    def render_page(page_num: int) -> Tuple[int, np.ndarray]:
-        page = pdf_document[page_num]
-        matrix = pymupdf.Matrix(300 / 72, 300 / 72)
-        pix = page.get_pixmap(matrix=matrix, alpha=False)
-        img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
-            pix.h, pix.w, pix.n
-        )
-        if pix.n == 3:
-            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-        return page_num, img_array.copy()
-
-    with ThreadPoolExecutor(max_workers=min(4, page_count)) as executor:
-        futures = [executor.submit(render_page, i) for i in range(page_count)]
-        for future in futures:
-            page_num, img_array = future.result()
-            images[page_num] = img_array
-
-    pdf_document.close()
-    return [img for img in images if img is not None]
 
 
 def _load_single_image(image_path: str) -> List[np.ndarray]:
